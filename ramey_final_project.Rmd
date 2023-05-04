@@ -1,0 +1,272 @@
+---
+title: "Final Prject"
+author: "Ian R Code"
+date: "Last updated: `r Sys.time()`"
+output:
+  html_document:
+    theme: lumen
+    toc: yes
+    toc_depth: 4
+    toc_float: no
+    df_print: kable
+  pdf_document:
+    toc: yes
+---
+
+
+```{r, message=FALSE, echo=FALSE}
+# Load all packages here:
+library(tidyverse)
+library(readr)
+#library(janitor)
+library(infer)
+```
+
+
+
+
+** Data Glimpse **
+
+
+>
+I will glipmse my dataset to show me the summary and 9 columns, so I can analyze the variables in the set.
+
+```{r}
+
+data <- read_csv("football_salaries.csv")
+glimpse(data)
+
+```
+# Position Data
+
+>
+I took the Top 5 highest paid positions on avg
+
+```{r}
+position_data <- data %>%
+  filter(age != 2020, age != 323)%>%
+  group_by(position)%>%
+  summarise( avg_total_value = mean(total_value, na.rm =TRUE),
+             avg_age = mean(age, na.rm =TRUE),)%>%
+  arrange(desc(avg_total_value))%>%
+  slice(1:5)
+position_data
+ 
+```
+>
+You can see them plotted here
+
+
+```{r}
+
+df1 <- aggregate(position_data$avg_total_value, by=list(position_data$position), FUN=mean)  # aggregate
+colnames(df1) <- c("position", "avg_total_value")  # change column names
+df1 <- df1[order(df1$avg_total_value), ]  # sort
+df1$position <- factor(df1$position, levels = df1$position)
+ggplot(df1, aes(x=position, y=avg_total_value)) + 
+  geom_bar(stat="identity", width=.5, fill="tomato3") +
+  scale_y_continuous(labels = scales::label_number_si())+
+  labs(title="Ordered Bar Chart", 
+       subtitle="Top 5 Salary", 
+       caption="source: position_data") + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+
+```
+
+
+
+
+
+>
+Quaterbacks typically have a longer lifespan in the NFL. The defensive positions listed in the Top 5 are all very similar positions. The coaches decide the defensive scheme in the NFL, so these player have very similar builds and playstyles. That is why I decided to look deep into the Left Tackle position. I also play Left Tackle, so I decided to take a deeper dive into them specifically
+
+
+
+# Left Tackle Data
+
+
+
+```{r}
+lt_data <- data %>%
+  filter(position == 'left-tackle', age != 2020, age != 323) %>%
+  arrange(desc(age))
+glimpse(lt_data)
+
+summary(lt_data$age)
+```
+
+>
+We can see that the oldest Left Tackle is 38. I decided to say 30 years is considered old for this position. I bootstrapped a distribution to show that the average NFL Left Tackle is never close to 30 years old.
+
+
+```{r}
+bootstrap_lt <- lt_data %>%
+  rep_slice_sample(n=101 , reps=10000 ,  replace=TRUE)  
+
+bootstrap_distribution_of_lts <- bootstrap_lt %>%
+  group_by(replicate) %>%
+  summarize(resample_mean = mean(age))
+
+bootstrap_distribution_of_lts %>%
+  ggplot(aes(x = resample_mean)) +
+  geom_histogram(bins = 23, color = "white") +
+  labs(x = "Bootstrap Sample Mean of LTs Age")
+
+
+```
+
+
+```{r}
+lt_data2 <- lt_data %>%
+  summarize(
+    num_old_lts = sum(age >= 30),
+    n = n(),
+    p_hat = num_old_lts/n   # proportion of old Left Tackles
+  )
+lt_data2
+```
+
+>
+The probability of being atleast a 30 year old Left Tackle is less than 15%
+I wanted to simulate how often a Left Tackle would be atleast 30 years old, so I pulled the ole bootstraps.
+
+```{r}
+bootstrap_distribution_of_proportions <- lt_data %>%
+  rep_slice_sample(n=101 , reps=10000 ,  replace=TRUE) %>% 
+  group_by(replicate) %>%
+  summarize(
+    num_old_lts = sum(age >= 30),
+    n = n(),
+    resample_proportion = num_old_lts/n   # proportion of old Left Tackles
+  )
+bootstrap_distribution_of_proportions %>%
+  ggplot(aes(x = resample_proportion)) +
+  geom_histogram(bins = 23, color = "white") +
+  labs(x = "Bootstrap Proportions")
+```
+
+
+
+
+>
+I decided that a confidence interval would be best to know exactly how likely it is to be atleast a 30 year ol Left Tackle
+
+```{r}
+bootstrap_distribution_of_proportions %>% 
+  summarize(
+    boot_dist_mean = mean(resample_proportion),
+    boot_dist_SE = sd(resample_proportion)
+  )
+SE <- 0.0353
+z_alpha2 <- 1.96   # Using a 95% CI we use z of 1.96
+c(.149 - z_alpha2*SE, .149 + z_alpha2*SE) 
+quantile(bootstrap_distribution_of_proportions$resample_proportion, c(.025,.975))
+```
+
+
+>
+The conclusion is that there is a 95% probability that the unknown proportion
+of old left tackles in the NFL would be between 7.9% and 21.8%
+
+
+>
+I wanted to do the same things using the same age for edge rushers.
+
+# Edge Rusher Data
+
+
+
+```{r}
+edge_data <- data %>%
+  filter(position == 'edge-rusher', age != 2020, age != 323)%>%
+  arrange(desc(age))
+
+summary(edge_data$age)
+```
+
+>
+Very similar oldest player. I bootstrapped another distribution of average age to show that it's still unlikely to be 30 plus.
+
+
+```{r}
+bootstrap_er <- edge_data %>%
+  rep_slice_sample(n=101 , reps=10000 ,  replace=TRUE)  
+
+bootstrap_distribution_of_ers <- bootstrap_er %>%
+  group_by(replicate) %>%
+  summarize(resample_mean = mean(age))
+
+bootstrap_distribution_of_ers %>%
+  ggplot(aes(x = resample_mean)) +
+  geom_histogram(bins = 30, color = "white") +
+  labs(x = "Bootstrap Sample Mean of ERs Age")
+
+```
+
+
+
+
+```{r}
+bootstrap_distribution_of_proportions2 <- edge_data %>%
+  rep_slice_sample(n=209 , reps=10000 ,  replace=TRUE) %>% 
+  group_by(replicate) %>%
+  summarize(
+    num_old_ers = sum(age >= 30),
+    n = n(),
+    resample_proportion = num_old_ers/n   # proportion of old Edge Rushers
+  )
+bootstrap_distribution_of_proportions2 %>%
+  ggplot(aes(x = resample_proportion)) +
+  geom_histogram(bins = 20, color = "white") +
+  labs(x = "Bootstrap Proportions")
+
+bootstrap_distribution_of_proportions2 %>% 
+  summarize(
+    boot_dist_mean = mean(resample_proportion),
+    boot_dist_SE = sd(resample_proportion)
+  )
+SE <- 0.0234
+z_alpha2 <- 1.96   # Using a 95% CI we use z of 1.96
+c(.129 - z_alpha2*SE, .129 + z_alpha2*SE) 
+quantile(bootstrap_distribution_of_proportions2$resample_proportion, c(.025,.975))
+
+```
+
+>
+The conclusion is that there is a 95% probability that the unknown proportion 
+of old edge rushers in the NFL would be between 8% and 17%
+
+# My conclusion
+
+>
+I think that considering Left Tackles and Edge Rushers compete against one another that it is not surprising that they last similar amounts of time in the NFL. They also get paid more than any other player on their team besides the quaterback. This is just reinforcing my idea that football is won in the trenches.
+
+```{r}
+
+
+```
+
+
+
+
+```{r}
+
+
+```
+
+
+
+
+```{r}
+
+
+```
+
+
+
+
+```{r}
+
+
+```
+
